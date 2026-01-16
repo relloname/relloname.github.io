@@ -25,6 +25,37 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         
+/* 팝업 모달 스타일 */
+.modal {
+    display: none; 
+    position: fixed; 
+    z-index: 1000; 
+    left: 0; top: 0;
+    width: 100%; height: 100%;
+    background-color: rgba(0,0,0,0.5); /* 배경 어둡게 */
+}
+
+.modal-content {
+    background-color: white;
+    margin: 10% auto;
+    padding: 25px;
+    border-radius: 12px;
+    width: 50%; /* 너비 조절 가능 */
+    max-width: 600px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    position: relative;
+}
+
+.close-btn {
+    position: absolute;
+    right: 20px; top: 15px;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+}
+
+.close-btn:hover { color: #000; }
+
         .section { margin-bottom: 50px; }
         .section-title { font-size: 20px; font-weight: bold; color: #333; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #007bff; display:flex; justify-content: space-between; align-items: center; gap:12px; }
         .controls { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
@@ -118,6 +149,13 @@
                 <span>데이터 업로드</span>
             </button>
         </div>
+    </div>
+
+<div style="display: flex; gap: 15px; align-items: center;">
+    <button id="aiPopupBtn" style="padding: 10px 20px; background: #6200ee; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(98,0,238,0.3); transition: all 0.2s;" onclick="toggleAiModal(true)">
+        <span style="font-size: 16px;">🤖</span>
+        <span>AI 분석</span>
+    </button>
     </div>
 
     <div class="nav-tabs">
@@ -3885,28 +3923,117 @@ function toggleDayWeekGrowthRate() {
     });
 }
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const API_KEY = "여기에_발급받은_API_KEY_입력"; // 보안을 위해 위 1번의 리퍼러 제한 필수!
-const genAI = new GoogleGenerativeAI(API_KEY);
+const GEMINI_API_KEY = "AIzaSyB81TXA4S3EEWdXBJdi2ALsdmZChn51vNQ"; // 발급받은 키를 여기에 넣으세요
 
-window.askGemini = async function() {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const prompt = document.getElementById("prompt").value;
-    const resultElement = document.getElementById("response");
+async function askGemini() {
+    const queryInput = document.getElementById('geminiQuery');
+    const answerDiv = document.getElementById('geminiAnswer');
+    const statusDiv = document.getElementById('geminiStatus');
+    const btn = document.getElementById('btnAsk');
 
-    resultElement.innerText = "생각 중...";
+    if (!queryInput.value.trim()) {
+        alert("질문을 입력해주세요.");
+        return;
+    }
+
+    // 1. 현재 리포트 데이터 수집 (RawRows가 기존 코드에 정의되어 있음)
+    // 요일별/주차별 요약 데이터를 텍스트로 변환
+    const summaryData = rawRows.slice(0, 30).map(r => 
+        `날짜/항목: ${r.date || r.category}, 광고비: ${r.cost}, 매출: ${r.revenue}, ROAS: ${r.roas}%`
+    ).join('\n');
+
+    const prompt = `
+        당신은 마케팅 데이터 분석가입니다. 아래 제공된 4주간의 마케팅 성과 데이터를 바탕으로 사용자의 질문에 친절하고 전문적으로 답하세요.
+        답변은 핵심 수치를 언급하며 한국어로 작성하세요.
+
+        [데이터 요약]
+        ${summaryData}
+
+        [사용자 질문]
+        ${queryInput.value}
+    `;
+
+    // UI 상태 업데이트
+    statusDiv.innerText = "Gemini가 데이터를 읽고 분석 중입니다... 잠시만 기다려주세요.";
+    answerDiv.style.display = "none";
+    btn.disabled = true;
 
     try {
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        resultElement.innerText = response.text();
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }]
+            })
+        });
+
+        const data = await response.json();
+        
+        if (data.candidates && data.candidates[0].content.parts[0].text) {
+            const result = data.candidates[0].content.parts[0].text;
+            answerDiv.innerText = result;
+            answerDiv.style.display = "block";
+            statusDiv.innerText = "분석 완료";
+        } else {
+            throw new Error("API 응답 구조가 예상과 다릅니다.");
+        }
     } catch (error) {
-        resultElement.innerText = "오류 발생: " + error.message;
+        console.error("Gemini API Error:", error);
+        statusDiv.innerText = "오류가 발생했습니다. API 키 설정이나 네트워크를 확인해주세요.";
+    } finally {
+        btn.disabled = false;
     }
 }
 
 
+// 팝업 열기/닫기 제어
+function toggleAiModal(show) {
+    const modal = document.getElementById('aiModal');
+    modal.style.display = show ? 'block' : 'none';
+    
+    // 팝업 열 때 입력창에 자동 포커스
+    if(show) setTimeout(() => document.getElementById('geminiQuery').focus(), 100);
+}
+
+// 팝업 바깥 영역 클릭 시 닫기
+window.onclick = function(event) {
+    const modal = document.getElementById('aiModal');
+    if (event.target == modal) {
+        toggleAiModal(false);
+    }
+}
+
+// 기존에 작성하신 askGemini() 함수가 있다면 그 안의 로직을 
+// 이 UI ID(geminiQuery, geminiAnswer 등)에 맞춰서 연결해 주시면 됩니다.
+
+
 </script>
+
+<div id="aiModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 style="margin: 0; color: #6200ee; display: flex; align-items: center; gap: 10px;">
+                <span>🤖</span> Gemini AI 마케팅 분석
+            </h3>
+            <span class="close-btn" onclick="toggleAiModal(false)">&times;</span>
+        </div>
+        <div style="padding: 25px;">
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <input type="text" id="geminiQuery" placeholder="예: 지난주 대비 성과가 나빠진 캠페인은?" 
+                       style="flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                <button onclick="askGemini()" id="btnAsk" 
+                        style="padding: 10px 20px; background: #6200ee; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                    질문
+                </button>
+            </div>
+            <div id="geminiStatus" style="font-size: 12px; color: #666; margin-bottom: 10px;"></div>
+            <div id="geminiAnswer" style="padding: 15px; background: #f9f9f9; border-radius: 8px; line-height: 1.6; max-height: 400px; overflow-y: auto; display: none; border-left: 4px solid #6200ee; font-size: 14px; white-space: pre-wrap;">
+            </div>
+        </div>
+    </div>
+</div>
+
+
 </body>
 </html>
