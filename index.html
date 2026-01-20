@@ -212,6 +212,53 @@
             </div>
             <div id="statsContainer" class="stat-grid"></div>
             
+	<!-- 종합 성과 밸런스 (Radar Charts) -->
+<div class="chart-container" style="margin-top: 30px;">
+    <div class="section-title" style="border: none; padding-bottom: 0;">
+        <span>📊 종합 성과 밸런스 (Radar)</span>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px;">
+        <!-- Radar Chart 1: 기본 성과 지표 -->
+        <div style="background: #f9fafb; border: 1px solid #e3e6ea; border-radius: 12px; padding: 25px;">
+            <div style="font-size: 16px; font-weight: bold; color: #2c3e50; margin-bottom: 15px; text-align: center;">📈 기본 성과 지표</div>
+            <div style="position: relative; height: 400px; width: 100%;">
+                <canvas id="radarChart1"></canvas>
+            </div>
+            <div style="display: flex; justify-content: center; gap: 20px; margin-top: 15px; font-size: 13px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 20px; height: 12px; border-radius: 3px; background: rgba(54, 162, 235, 0.8);"></div>
+                    <span>지난주</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 20px; height: 12px; border-radius: 3px; background: rgba(255, 99, 132, 0.3); border: 2px dashed rgba(255, 99, 132, 0.8);"></div>
+                    <span>4주 평균</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Radar Chart 2: 효율 지표 -->
+        <div style="background: #f9fafb; border: 1px solid #e3e6ea; border-radius: 12px; padding: 25px;">
+            <div style="font-size: 16px; font-weight: bold; color: #2c3e50; margin-bottom: 15px; text-align: center;">⚡ 효율 지표</div>
+            <div style="position: relative; height: 400px; width: 100%;">
+                <canvas id="radarChart2"></canvas>
+            </div>
+            <div style="display: flex; justify-content: center; gap: 20px; margin-top: 15px; font-size: 13px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 20px; height: 12px; border-radius: 3px; background: rgba(75, 192, 192, 0.8);"></div>
+                    <span>지난주</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 20px; height: 12px; border-radius: 3px; background: rgba(255, 159, 64, 0.3); border: 2px dashed rgba(255, 159, 64, 0.8);"></div>
+                    <span>4주 평균</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+
+</div>
+
             <!-- 주간 추이 차트 -->
             <div class="chart-container">
                 <h3 id="weekCompareTitle" style="margin-bottom: 16px;">주간 성과 추이 (최근 4주)</h3>
@@ -1779,6 +1826,7 @@ function updateAll(){
     updateDeviceTables();
     createCharts();
     updateStackedChart();
+    updateRadarCharts();
     updateBudgetSimulation();
     updateForecast();
     updateDayWeekAnalysis();
@@ -4166,6 +4214,172 @@ function toggleWeekGrowthRate() {
     cols.forEach(col => {
         col.style.display = isHidden ? '' : 'none';
     });
+}
+
+/* ============ Radar Charts ============ */
+let radarChart1Instance = null;
+let radarChart2Instance = null;
+
+function normalizeValue(current, average, isInverse = false) {
+    if (average === 0) return 50;
+    const ratio = current / average;
+    const normalized = isInverse ? (2 - ratio) * 50 : ratio * 50;
+    return Math.max(0, Math.min(100, normalized));
+}
+
+function updateRadarCharts() {
+    if (!currentWeekData.length || !weeks.length) return;
+    
+    const cur = calcMetrics(currentWeekData);
+    const fourWeeks = rawRows.filter(d => weeks.includes(d.week));
+    const fourTotals = {
+        cost: sum(fourWeeks, 'cost'),
+        impressions: sum(fourWeeks, 'impressions'),
+        clicks: sum(fourWeeks, 'clicks'),
+        conversions: sum(fourWeeks, 'conversions'),
+        revenue: sum(fourWeeks, 'revenue')
+    };
+    const denom = weeks.length || 1;
+    const avg4 = {
+        cost: fourTotals.cost / denom,
+        impressions: fourTotals.impressions / denom,
+        clicks: fourTotals.clicks / denom,
+        conversions: fourTotals.conversions / denom,
+        revenue: fourTotals.revenue / denom,
+        ctr: fourTotals.impressions > 0 ? (fourTotals.clicks / fourTotals.impressions) * 100 : 0,
+        cvr: fourTotals.clicks > 0 ? (fourTotals.conversions / fourTotals.clicks) * 100 : 0,
+        cpc: fourTotals.clicks > 0 ? fourTotals.cost / fourTotals.clicks : 0,
+        cpa: fourTotals.conversions > 0 ? fourTotals.cost / fourTotals.conversions : 0,
+        roas: fourTotals.cost > 0 ? (fourTotals.revenue / fourTotals.cost) * 100 : 0,
+        aov: fourTotals.conversions > 0 ? fourTotals.revenue / fourTotals.conversions : 0,
+        cor: fourTotals.revenue > 0 ? (fourTotals.cost / fourTotals.revenue) * 100 : 0
+    };
+
+    // Radar Chart 1 데이터
+    const radar1Data = [
+        normalizeValue(cur.cost, avg4.cost),
+        normalizeValue(cur.impressions, avg4.impressions),
+        normalizeValue(cur.clicks, avg4.clicks),
+        normalizeValue(cur.conversions, avg4.conversions),
+        normalizeValue(cur.revenue, avg4.revenue),
+        normalizeValue(cur.ctr, avg4.ctr)
+    ];
+
+    // Radar Chart 2 데이터
+    const radar2Data = [
+        normalizeValue(cur.cvr, avg4.cvr),
+        normalizeValue(cur.cpc, avg4.cpc, true),
+        normalizeValue(cur.cpa, avg4.cpa, true),
+        normalizeValue(cur.roas, avg4.roas),
+        normalizeValue(cur.aov, avg4.aov),
+        normalizeValue(cur.cor, avg4.cor, true)
+    ];
+
+    // Chart 1
+    const ctx1 = document.getElementById('radarChart1');
+    if (ctx1) {
+        if (radarChart1Instance) radarChart1Instance.destroy();
+        radarChart1Instance = new Chart(ctx1, {
+            type: 'radar',
+            data: {
+                labels: ['광고비', '노출수', '클릭수', '전환수', '매출액', '클릭율'],
+                datasets: [{
+                    label: '현재 성과',
+                    data: radar1Data,
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 3,
+                    pointRadius: 5
+                }, {
+                    label: '4주 평균',
+                    data: [50, 50, 50, 50, 50, 50],
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    borderColor: 'rgba(255, 99, 132, 0.8)',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    pointRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        min: 0,
+                        max: 100,
+                        ticks: { stepSize: 20, font: { size: 11 } },
+                        pointLabels: { font: { size: 13, weight: 'bold' }, color: '#2c3e50' }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.parsed.r;
+                                const percentage = ((value / 50 - 1) * 100).toFixed(1);
+                                return `${context.dataset.label}: ${value.toFixed(1)} (${percentage > 0 ? '+' : ''}${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Chart 2
+    const ctx2 = document.getElementById('radarChart2');
+    if (ctx2) {
+        if (radarChart2Instance) radarChart2Instance.destroy();
+        radarChart2Instance = new Chart(ctx2, {
+            type: 'radar',
+            data: {
+                labels: ['전환율', 'CPC', '전환당비용', 'ROAS', '평균주문금액', '매출액대비광고비'],
+                datasets: [{
+                    label: '현재 성과',
+                    data: radar2Data,
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 3,
+                    pointRadius: 5
+                }, {
+                    label: '4주 평균',
+                    data: [50, 50, 50, 50, 50, 50],
+                    backgroundColor: 'rgba(255, 159, 64, 0.1)',
+                    borderColor: 'rgba(255, 159, 64, 0.8)',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    pointRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        min: 0,
+                        max: 100,
+                        ticks: { stepSize: 20, font: { size: 11 } },
+                        pointLabels: { font: { size: 13, weight: 'bold' }, color: '#2c3e50' }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.parsed.r;
+                                const percentage = ((value / 50 - 1) * 100).toFixed(1);
+                                return `${context.dataset.label}: ${value.toFixed(1)} (${percentage > 0 ? '+' : ''}${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
 }
 
 
